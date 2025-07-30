@@ -1,0 +1,73 @@
+# ========== Python compiled files ==========
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ========== C extensions ==========
+*.so
+
+# ========== Jupyter Notebook checkpoints ==========
+.ipynb_checkpoints
+
+# ========== Environment folders ==========
+env/
+venv/
+ENV/
+.venv/
+.env/
+.pipenv/
+pip-wheel-metadata/
+
+# ========== PyInstaller build folders ==========
+build/
+dist/
+*.spec
+
+# ========== Logs and database ==========
+*.log
+*.sqlite3
+*.db
+
+# ========== Unit test cache ==========
+.pytest_cache/
+.tox/
+.nox/
+
+# ========== Coverage ==========
+htmlcov/
+.coverage
+coverage.xml
+.cache
+nosetests.xml
+*.cover
+*.py,cover
+
+# ========== VSCode ==========
+.vscode/
+
+# ========== JetBrains / PyCharm ==========
+.idea/
+*.iml
+
+# ========== OS-specific files ==========
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========== Virtualenv/Pipenv ==========
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ========== MyPy / typing ==========
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+
+# ========== Wheel files ==========
+*.whl
+
+# ========== Temporary files ==========
+*.tmp
+*.bak
+*.swp
