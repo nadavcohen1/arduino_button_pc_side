@@ -8,6 +8,7 @@ import serial
 import serial.tools.list_ports
 
 # Serial port definitions
+
 SERIAL_PORT = 'COM3'     # Arduino port - TODO dynamic port name setting
 BAUD_RATE = 9600
 
