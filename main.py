@@ -1,5 +1,7 @@
 
 
+from language_map import LANGUAGE_MAP  # Import the mapping
+
 import ctypes
 import time
 import win32gui
@@ -11,12 +13,11 @@ import win32gui
 
 
 # Serial port definitions
-SERIAL_PORT = 'COM4'    # Arduino port - TODO dynamic port name setting
 BAUD_RATE = 9600
-ARDUINO_PORT_DESCRIPTION = "USB-SERIAL CH340 (COM4)"
+ARDUINO_PORT_DESCRIPTION = "USB-SERIAL CH340"
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
-
+"""
 # Language mapping identification - TODO Add all Languages
 LANGUAGE_MAP = {
     0x0409: 'EN',  # English
@@ -26,13 +27,10 @@ LANGUAGE_MAP = {
     0x0419: 'RU',  # Russian
     0x0411: 'JA',  # Japanese
 }
+"""
 
 # State machine:
 INITIALIZE = 1
-CHECK_SERIAL_CON_ESTABLISH = 2      # Check and Establish
-CHECK_SERIAL_CON_SEND_ARDUINO = 3   # Check and send to Arduino
-CHECK_SERIAL_CON_ONLY = 4           # Check only
-EST_SERIAL_CON = 5
 GET_LANG_STATE = 6
 SEND_SERIAL_TO_ARDUINO = 7
 GET_PORT_STATE_AND_ESTABLISH = 8
@@ -57,6 +55,25 @@ def pc_increment_language_state():
     win32api.keybd_event(0x12, 0, 2, 0)  # Alt up
 
 
+def get_arduino_comm_id():
+    status = "Unavailable"
+    ports = serial.tools.list_ports.comports()
+    if not ports:
+        print("No serial ports found.")
+
+    for port in ports:
+        port_name = port.device
+        description = port.description
+
+        if "USB-SERIAL CH340" in description:
+            status = "Available"
+            arduino_comm_id = port_name
+
+        # print(f"get port state = {port_name} - {description} - {status}")
+
+    return status, arduino_comm_id
+
+
 def get_port_state_and_establish():
     status = "Unavailable"
     arduino_state = 0
@@ -71,16 +88,14 @@ def get_port_state_and_establish():
 
         # Try opening the port to check if it's available
         try:
-            arduino_state = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-            if arduino_state and description == ARDUINO_PORT_DESCRIPTION:
-                status = "Available"
-            # with serial.Serial(port_name, baudrate=9600, timeout=1) as ser:
-            #    if description == ARDUINO_PORT_DESCRIPTION:
-            #        status = "Available"
+            if ARDUINO_PORT_DESCRIPTION in description:
+                arduino_state = serial.Serial(port_name, BAUD_RATE, timeout=1)
+                if arduino_state:
+                    status = "Available"
         except (serial.SerialException, OSError):
             status = "Busy or Unavailable"
 
-        print(f"port state & establish {port_name} - {description} ")
+        print(f"port state & establish {port_name} - {description} - {status} ")
 
     return status, arduino_state
 
@@ -95,10 +110,9 @@ def get_port_state():
         port_name = port.device
         description = port.description
 
-        if description == "USB-SERIAL CH340 (COM4)":
+        if ARDUINO_PORT_DESCRIPTION in description:
             status = "Available"
-
-        print(f"get port state = {port_name} - {description} - {status}")
+        # print(f"get port state = {port_name} - {description} - {status}")
 
     return status
 
@@ -134,21 +148,17 @@ def monitor_language_and_send():
 
         elif state_machine == SEND_SERIAL_TO_ARDUINO:
             print("SEND_SERIAL_TO_ARDUINO")
-            # Check serial port status
-            state = get_port_state()
-            if state == "Available":
-                # Send language to Arduino port
-                arduino_serial_conn.write(message.encode('utf-8'))
-                print(f"Sent to Arduino: {message.strip()}")
-                state_machine = GET_LANG_STATE
-            else:
-                print("NO Arduino port available")
-                state_machine = GET_PORT_STATE_AND_ESTABLISH
+
+            # Send language to Arduino port
+            arduino_serial_conn.write(message.encode('utf-8'))
+            print(f"NEW Language Sent to Arduino: {message.strip()}")
+            state_machine = GET_LANG_STATE
 
         elif state_machine == GET_PORT_STATE_AND_ESTABLISH:
             print("GET_PORT_STATE_AND_ESTABLISH")
             status, arduino_serial_conn = get_port_state_and_establish()
             if status == "Available":
+                # state_machine = GET_PORT_STATE_AND_ESTABLISH
                 state_machine = GET_LANG_STATE
             else:
                 state_machine = GET_PORT_STATE_AND_ESTABLISH
