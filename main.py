@@ -4,37 +4,27 @@ from language_map import LANGUAGE_MAP  # Import the mapping
 
 import ctypes
 import time
-import win32gui
 import win32process
 import serial
 import serial.tools.list_ports
 import win32api
 import win32gui
 
+# State machine:
+NONE = 1
+INITIALIZE = 2
+GET_LANG_STATE = 3
+SEND_SERIAL_TO_ARDUINO = 4
+GET_PORT_STATE_AND_ESTABLISH = 5
+ERROR_STATE = 10
 
 # Serial port definitions
 BAUD_RATE = 9600
 ARDUINO_PORT_DESCRIPTION = "USB-SERIAL CH340"
+SERIAL_TIMEOUT = 0.01
+KEEP_ALIVE_TIMER = 1
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
-"""
-# Language mapping identification - TODO Add all Languages
-LANGUAGE_MAP = {
-    0x0409: 'EN',  # English
-    0x040D: 'HE',  # Hebrew
-    0x040C: 'FR',  # French
-    0x0410: 'IT',  # Italian
-    0x0419: 'RU',  # Russian
-    0x0411: 'JA',  # Japanese
-}
-"""
-
-# State machine:
-INITIALIZE = 1
-GET_LANG_STATE = 6
-SEND_SERIAL_TO_ARDUINO = 7
-GET_PORT_STATE_AND_ESTABLISH = 8
-ERROR_STATE = 10
 
 
 # Get keyboard language
@@ -55,25 +45,6 @@ def pc_increment_language_state():
     win32api.keybd_event(0x12, 0, 2, 0)  # Alt up
 
 
-def get_arduino_comm_id():
-    status = "Unavailable"
-    ports = serial.tools.list_ports.comports()
-    if not ports:
-        print("No serial ports found.")
-
-    for port in ports:
-        port_name = port.device
-        description = port.description
-
-        if "USB-SERIAL CH340" in description:
-            status = "Available"
-            arduino_comm_id = port_name
-
-        # print(f"get port state = {port_name} - {description} - {status}")
-
-    return status, arduino_comm_id
-
-
 def get_port_state_and_establish():
     status = "Unavailable"
     arduino_state = 0
@@ -81,6 +52,7 @@ def get_port_state_and_establish():
     ports = serial.tools.list_ports.comports()
     if not ports:
         print("No serial ports found.")
+        time.sleep(1)
 
     for port in ports:
         port_name = port.device
@@ -89,7 +61,9 @@ def get_port_state_and_establish():
         # Try opening the port to check if it's available
         try:
             if ARDUINO_PORT_DESCRIPTION in description:
-                arduino_state = serial.Serial(port_name, BAUD_RATE, timeout=1)
+                arduino_state = serial.Serial(port_name, BAUD_RATE, timeout=SERIAL_TIMEOUT)
+                # Wait for serial connection stabilization
+                time.sleep(2)
                 if arduino_state:
                     status = "Available"
         except (serial.SerialException, OSError):
@@ -105,6 +79,7 @@ def get_port_state():
     ports = serial.tools.list_ports.comports()
     if not ports:
         print("No serial ports found.")
+        time.sleep(1)
 
     for port in ports:
         port_name = port.device
@@ -112,24 +87,33 @@ def get_port_state():
 
         if ARDUINO_PORT_DESCRIPTION in description:
             status = "Available"
-        # print(f"get port state = {port_name} - {description} - {status}")
 
     return status
 
 
-def monitor_language_and_send():
+def debug_print(debug_current_state_machine, debug_prev_state_machine, print_str):
+    if debug_current_state_machine != debug_prev_state_machine:
+        debug_prev_state_machine = debug_current_state_machine
+        print(print_str)
+    return debug_prev_state_machine
 
+
+def monitor_language_and_send():
+    prev_state_machine = NONE
     state_machine = INITIALIZE
     arduino_serial_conn = 0
+    next_send = time.perf_counter()
 
     while state_machine != ERROR_STATE:
         if state_machine == INITIALIZE:
-            print("INITIALIZE")
+            # Debug prints
+            prev_state_machine = debug_print(state_machine, prev_state_machine, "INITIALIZE")
             last_lang = None
             state_machine = GET_PORT_STATE_AND_ESTABLISH
 
         elif state_machine == GET_LANG_STATE:
-            print("GET_LANG_STATE")
+            prev_state_machine = debug_print(state_machine, prev_state_machine, "GET_LANG_STATE")
+
             # Check serial port status
             state = get_port_state()
             if state == "Available":
@@ -142,12 +126,12 @@ def monitor_language_and_send():
                 else:
                     # Language was not changed - Re-read it
                     state_machine = GET_LANG_STATE
-                    time.sleep(1)
             else:
                 state_machine = GET_PORT_STATE_AND_ESTABLISH
 
         elif state_machine == SEND_SERIAL_TO_ARDUINO:
-            print("SEND_SERIAL_TO_ARDUINO")
+            # Debug prints
+            prev_state_machine = debug_print(state_machine, prev_state_machine, "SEND_SERIAL_TO_ARDUINO")
 
             # Send language to Arduino port
             arduino_serial_conn.write(message.encode('utf-8'))
@@ -155,27 +139,40 @@ def monitor_language_and_send():
             state_machine = GET_LANG_STATE
 
         elif state_machine == GET_PORT_STATE_AND_ESTABLISH:
-            print("GET_PORT_STATE_AND_ESTABLISH")
+            # Debug prints
+            prev_state_machine = debug_print(state_machine, prev_state_machine, "GET_PORT_STATE_AND_ESTABLISH")
+
             status, arduino_serial_conn = get_port_state_and_establish()
             if status == "Available":
-                # state_machine = GET_PORT_STATE_AND_ESTABLISH
                 state_machine = GET_LANG_STATE
             else:
                 state_machine = GET_PORT_STATE_AND_ESTABLISH
 
             print("Arduino connected status = ", status)
-            time.sleep(1)
 
         else:
             print("State machine error")
 
-        # Receive language change from Arduino
-        state = get_port_state()
-        if state == "Available" and arduino_serial_conn:
-            line = arduino_serial_conn.readline().decode('utf-8').strip()
-            if line == "LANGUAGE_TOGGLE":
-                print("Toggle = " + line)
-                pc_increment_language_state()
+        try:
+            # Receive language change from Arduino
+            state = get_port_state()
+            if state == "Available" and arduino_serial_conn:
+                line = arduino_serial_conn.readline().decode('utf-8').strip()
+                if line == "LANGUAGE_TOGGLE":
+                    print("Toggle = " + line)
+                    pc_increment_language_state()
+
+            # Send KEEP_ALIVE message to the Arduino side
+            now = time.perf_counter()
+            # Check if it's time to send the next message
+            if now >= next_send:
+                next_send = now + KEEP_ALIVE_TIMER
+                if arduino_serial_conn:
+                    arduino_serial_conn.write(b'KEEP_ALIVE\n')
+        # Exception handling
+        except Exception as e:
+            print("Exception handling - ", e)
+            last_lang = 0
 
 
 monitor_language_and_send()
