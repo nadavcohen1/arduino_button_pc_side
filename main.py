@@ -36,7 +36,9 @@ LOCALE_SENGLISHDISPLAYNAME  = 0x00000072  # "English (United States)"
 LOCALE_SNAME                = 0x0000005C  # "en-US" (fallback)
 
 BUF_LEN = 40  # LOCALE_NAME_MAX_LENGTH
-OUTPUT_PATH = Path("installed_languages.txt")  # Allocation mapping fIle name
+# OUTPUT_PATH = Path("installed_languages.txt")  # Allocation mapping fIle name
+OUTPUT_PATH = Path.home() / "Boten" / "installed_languages.txt"  # Allocation mapping fIle name
+STATE_PATH = Path.home() / "Boten" / "color_allocations.json"
 
 # WinAPI DLLs
 user32   = ctypes.WinDLL("user32",   use_last_error=True)
@@ -54,9 +56,13 @@ kernel32.GetLocaleInfoEx.restype  = ctypes.c_int
 
 # Configuration
 COLOR_POOL: List[str] = ["Red", "Green", "Blue", "Yellow", "Magenta", "White", "Cyan"]
-STATE_PATH = Path(".color_allocations.json")  # change if needed
 
 def _load_state() -> Dict[str, str]:
+    # Ensure the directory exists; create if missing
+    if not STATE_PATH.parent.exists():
+        print(f"Creating directory: {STATE_PATH.parent}")
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     # Load the id→color mapping from disk; create file if missing or malformed.
     if not STATE_PATH.exists():
         _save_state({})
@@ -114,21 +120,6 @@ def release_color(identifier: str) -> bool:
         return True
     return False
 
-def get_assignment(identifier: str) -> Optional[str]:
-    # Return the color assigned to identifier, or None if not assigned
-    return _load_state().get(identifier)
-
-
-def list_assignments() -> Dict[str, str]:
-    # Return a snapshot of the current id→color mapping
-    return _load_state()
-
-def available_colors() -> List[str]:
-    # Return colors from the pool that are not currently assigned
-    mapping = _load_state()
-    used = set(mapping.values())
-    return [c for c in COLOR_POOL if c not in used]
-
 def _get_locale_info_ex(locale_name: str, field: int) -> str:
     buf = ctypes.create_unicode_buffer(BUF_LEN)
     n = kernel32.GetLocaleInfoEx(locale_name, field, buf, BUF_LEN)
@@ -157,7 +148,6 @@ def language_color_allocation(lcid: int):
     return language_color
 
 def build_lines() -> list[str]:
-    seen_hex: set[str] = set()
     lines: list[str] = []
     for lcid in _installed_langids():
         name = _lcid_to_locale_name(lcid)
@@ -197,9 +187,14 @@ def save_language_color_mapping_if_changed() -> None:
             print(line)
         OUTPUT_PATH.write_text(new_content, encoding="utf-8")
 
-def retrieve_saved_language_color(language_id: str):
+def retrieve_saved_language_color(language_id: int):
     filename = OUTPUT_PATH
     default = "Language not found"
+
+    if not OUTPUT_PATH.parent.exists():
+        print(f"Creating directory: {OUTPUT_PATH.parent}")
+        OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     # Ensure file exists
     if not os.path.exists(filename):
         open(filename, "a", encoding="utf-8").close()
@@ -280,7 +275,6 @@ def get_port_state():
         time.sleep(1)
 
     for port in ports:
-        port_name = port.device
         description = port.description
 
         if ARDUINO_PORT_DESCRIPTION in description:
@@ -301,6 +295,7 @@ def monitor_language_and_send():
     next_send = time.perf_counter()
     lang_map_next_check = time.perf_counter()
     last_lang = None
+    message = 0
 
     while state_machine != ERROR_STATE:
         if state_machine == INITIALIZE:
