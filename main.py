@@ -55,7 +55,7 @@ kernel32.GetLocaleInfoEx.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.
 kernel32.GetLocaleInfoEx.restype  = ctypes.c_int
 
 # Configuration
-COLOR_POOL: List[str] = ["Red", "Green", "Blue", "Yellow", "Magenta", "White", "Cyan"]
+COLOR_POOL: List[str] = ["Red", "Green", "Blue", "White", "Cyan", "Yellow", "Magenta"]
 
 def _load_state() -> Dict[str, str]:
     # Ensure the directory exists; create if missing
@@ -106,6 +106,8 @@ def allocate_color(identifier: str) -> Optional[str]:
             _save_state(mapping)
             return color
 
+    mapping[identifier] = None
+    _save_state(mapping)
     return None  # Pool exhausted
 
 def release_color(identifier: str) -> bool:
